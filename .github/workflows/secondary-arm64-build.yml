@@ -52,6 +52,10 @@ jobs:
           grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux"' scripts/properties.sh
           sed -i 's/^TERMUX_APP__PACKAGE_NAME="com.termux"$/TERMUX_APP__PACKAGE_NAME="com.termux.secondary"/' scripts/properties.sh
           grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.secondary"' scripts/properties.sh
+          # Patch the pinned Bootstrap script on the runner before Docker bind-mounts the source tree.
+          grep -Fq bzip2 scripts/build-bootstraps.sh
+          sed -i '/PACKAGES+=(.*bzip2.*/s/bzip2/libbz2/' scripts/build-bootstraps.sh
+          grep -Fq libbz2 scripts/build-bootstraps.sh
 
       - name: Build only the phone's AArch64 Bootstrap
         shell: bash
@@ -67,8 +71,6 @@ jobs:
             test "$TERMUX_PREFIX" = "/data/data/com.termux.secondary/files/usr"
             # Do not pass -f: upstream build-bootstraps.sh expands an unset *_FOR_ARCH variable to /*.
             # The pinned Termux packages revision moved bzip2 tools into libbz2 as a subpackage.
-            grep -Fq bzip2 scripts/build-bootstraps.sh
-            sed -i "/PACKAGES+=(.*bzip2.*/s/bzip2/libbz2/" scripts/build-bootstraps.sh
             grep -Fq libbz2 scripts/build-bootstraps.sh
             # Do not pass -f: upstream build-bootstraps.sh expands an unset *_FOR_ARCH variable to /*.
             # A fresh builder container has no package markers, so normal mode builds missing packages safely.
