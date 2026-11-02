@@ -81,9 +81,9 @@ jobs:
             # A fresh builder container has no package markers, so normal mode builds missing packages safely.
             ./scripts/build-bootstraps.sh --architectures aarch64
           '
+          # This step is still inside termux-packages; docker cp writes the archive here.
           docker cp termux-package-builder:/tmp/bootstrap-aarch64.zip bootstrap-aarch64.zip
           test -s bootstrap-aarch64.zip
-          mv bootstrap-aarch64.zip termux-packages/bootstrap-aarch64.zip
 
       - name: Verify Bootstrap paths, scripts and ELF architecture
         shell: bash
