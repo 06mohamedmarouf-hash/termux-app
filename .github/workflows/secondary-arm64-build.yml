@@ -1,0 +1,130 @@
+name: Build secondary Termux arm64 with matching Bootstrap and API
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - secondary-arm64-bootstrap-fix
+    paths:
+      - 'app/**'
+      - 'termux-shared/**'
+      - '.github/workflows/secondary-arm64-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out secondary Termux app
+        uses: actions/checkout@v4
+
+      - name: Check out pinned Termux packages sources
+        uses: actions/checkout@v4
+        with:
+          repository: termux/termux-packages
+          ref: fe96c88df2c37423220559e33476432c7ead4048
+          path: termux-packages
+
+      - name: Check out secondary Termux API sources
+        uses: actions/checkout@v4
+        with:
+          repository: 06mohamedmarouf-hash/termux-api
+          ref: master
+          path: termux-api
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify matching signing keys
+        run: cmp -s app/testkey_untrusted.jks termux-api/app/testkey_untrusted.jks
+
+      - name: Set secondary package name in Bootstrap build properties
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd termux-packages
+          grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux"' scripts/properties.sh
+          sed -i 's/^TERMUX_APP__PACKAGE_NAME="com.termux"$/TERMUX_APP__PACKAGE_NAME="com.termux.secondary"/' scripts/properties.sh
+          grep -Fx 'TERMUX_APP__PACKAGE_NAME="com.termux.secondary"' scripts/properties.sh
+
+      - name: Build only the phone's AArch64 Bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd termux-packages
+          ./scripts/run-docker.sh bash -lc '
+            set -euo pipefail
+            cd /home/builder/termux-packages
+            source scripts/properties.sh
+            printf "Bootstrap package: %s\\nPrefix: %s\\n" "$TERMUX_APP_PACKAGE" "$TERMUX_PREFIX"
+            test "$TERMUX_APP_PACKAGE" = "com.termux.secondary"
+            test "$TERMUX_PREFIX" = "/data/data/com.termux.secondary/files/usr"
+            ./scripts/build-bootstraps.sh --architectures aarch64 -f
+          '
+
+      - name: Verify Bootstrap paths, scripts and ELF architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="termux-packages/bootstrap-aarch64.zip"
+          test -s "$archive"
+          unzip -t "$archive"
+          root="$(mktemp -d)"
+          unzip -q "$archive" -d "$root"
+          test -x "$root/bin/bash"
+          readelf -h "$root/bin/bash" | grep -F 'AArch64'
+          second_stage="$root/etc/termux/termux-bootstrap/second-stage/termux-bootstrap-second-stage.sh"
+          test -s "$second_stage"
+          grep -Fq '/data/data/com.termux.secondary/files/usr' "$second_stage"
+          legacy_prefix='/data/data/com.termux/files/usr'
+          while IFS= read -r -d '' executable; do
+            if grep -aFq "$legacy_prefix" "$executable"; then
+              echo "Legacy Termux prefix found in executable: $executable" >&2
+              exit 1
+            fi
+          done < <(find "$root" -type f -perm /111 -print0)
+          mkdir -p app/src/main/cpp
+          cp "$archive" app/src/main/cpp/bootstrap-aarch64.zip
+          sha256sum app/src/main/cpp/bootstrap-aarch64.zip
+
+      - name: Publish matching termux-shared library
+        env:
+          TERMUX_CUSTOM_BOOTSTRAP: '1'
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+        run: ./gradlew --no-daemon publishReleasePublicationToMavenLocal
+
+      - name: Build secondary Termux arm64 APK
+        env:
+          TERMUX_CUSTOM_BOOTSTRAP: '1'
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Build secondary Termux API APK
+        working-directory: termux-api
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Verify APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          termux_apk='app/build/outputs/apk/debug/termux-app_apt-android-7-debug_arm64-v8a.apk'
+          api_apk='termux-api/app/build/outputs/apk/debug/termux-api-app_v0.53.0+debug.apk'
+          test -s "$termux_apk"
+          test -s "$api_apk"
+          sha256sum "$termux_apk" "$api_apk"
+
+      - name: Upload secondary Termux and API APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-secondary-arm64-app-and-api
+          path: |
+            app/build/outputs/apk/debug/termux-app_apt-android-7-debug_arm64-v8a.apk
+            termux-api/app/build/outputs/apk/debug/termux-api-app_v0.53.0+debug.apk
+          if-no-files-found: error
+          retention-days: 14
