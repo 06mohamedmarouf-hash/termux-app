@@ -62,6 +62,11 @@ jobs:
         run: |
           set -euo pipefail
           cd termux-packages
+          # The builder container cannot reliably move archives into the runner-owned bind mount.
+          # Create the archive in container /tmp, then export it with docker cp.
+          grep -Fq 'mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/"' scripts/build-bootstraps.sh
+          sed -i 's@mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/"@cp -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "/tmp/bootstrap-${1}.zip"@' scripts/build-bootstraps.sh
+          grep -Fq '"/tmp/bootstrap-${1}.zip"' scripts/build-bootstraps.sh
           ./scripts/run-docker.sh bash -lc '
             set -euo pipefail
             cd /home/builder/termux-packages
@@ -76,6 +81,9 @@ jobs:
             # A fresh builder container has no package markers, so normal mode builds missing packages safely.
             ./scripts/build-bootstraps.sh --architectures aarch64
           '
+          docker cp termux-package-builder:/tmp/bootstrap-aarch64.zip bootstrap-aarch64.zip
+          test -s bootstrap-aarch64.zip
+          mv bootstrap-aarch64.zip termux-packages/bootstrap-aarch64.zip
 
       - name: Verify Bootstrap paths, scripts and ELF architecture
         shell: bash
