@@ -65,7 +65,9 @@ jobs:
             printf "Bootstrap package: %s\\nPrefix: %s\\n" "$TERMUX_APP_PACKAGE" "$TERMUX_PREFIX"
             test "$TERMUX_APP_PACKAGE" = "com.termux.secondary"
             test "$TERMUX_PREFIX" = "/data/data/com.termux.secondary/files/usr"
-            ./scripts/build-bootstraps.sh --architectures aarch64 -f
+            # Do not pass -f: upstream build-bootstraps.sh expands an unset *_FOR_ARCH variable to /*.
+            # A fresh builder container has no package markers, so normal mode builds missing packages safely.
+            ./scripts/build-bootstraps.sh --architectures aarch64
           '
 
       - name: Verify Bootstrap paths, scripts and ELF architecture
