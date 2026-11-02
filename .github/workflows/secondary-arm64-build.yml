@@ -103,9 +103,13 @@ jobs:
             # Invalidate only per-package build markers; cached .debs may contain the primary Termux prefix.
             # Keep the cache directory and package outputs; rebuild packages normally for the secondary prefix.
             if [ -d /data/data/.built-packages ]; then
-              find /data/data/.built-packages -mindepth 1 -maxdepth 1 -type f -delete
+              # Marker entries may be symlinks or directories, not regular files.
+              # Remove only the direct per-package build markers, never the build cache.
+              find /data/data/.built-packages -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
             fi
-            test -z "$(find /data/data/.built-packages -mindepth 1 -maxdepth 1 -type f -print -quit 2>/dev/null || true)"
+            test -z "$(find /data/data/.built-packages -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)"
+            test ! -e /data/data/.built-packages/util-linux
+            test ! -L /data/data/.built-packages/util-linux
             ./scripts/build-bootstraps.sh --architectures aarch64
           CONTAINER_SCRIPT
           )"
