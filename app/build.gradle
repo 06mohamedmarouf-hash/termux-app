@@ -218,6 +218,19 @@ clean {
 
 task downloadBootstraps() {
     doLast {
+        // Custom Termux forks must embed bootstrap archives built for their own app data path.
+        // When enabled, the CI workflow supplies all four verified custom archives.
+        if (System.getenv("TERMUX_CUSTOM_BOOTSTRAP") == "1") {
+            ["aarch64", "arm", "i686", "x86_64"].each { arch ->
+                def customBootstrap = file("src/main/cpp/bootstrap-" + arch + ".zip")
+                if (!customBootstrap.isFile() || customBootstrap.length() == 0) {
+                    throw new GradleException("Missing custom bootstrap archive: " + customBootstrap)
+                }
+                logger.lifecycle("Using custom bootstrap archive: " + customBootstrap)
+            }
+            return
+        }
+
         def packageVariant = project.ext.packageVariant
         if (packageVariant == "apt-android-7") {
             def version = "2026.02.12-r1" + "%2B" + "apt.android-7"
