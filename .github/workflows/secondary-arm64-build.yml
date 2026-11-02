@@ -67,9 +67,9 @@ jobs:
             test "$TERMUX_PREFIX" = "/data/data/com.termux.secondary/files/usr"
             # Do not pass -f: upstream build-bootstraps.sh expands an unset *_FOR_ARCH variable to /*.
             # The pinned Termux packages revision moved bzip2 tools into libbz2 as a subpackage.
-            grep -Fx "PACKAGES+=(\"bzip2\")" scripts/build-bootstraps.sh
-            sed -i "s/PACKAGES+=(\"bzip2\")/PACKAGES+=(\"libbz2\")/" scripts/build-bootstraps.sh
-            grep -Fx "PACKAGES+=(\"libbz2\")" scripts/build-bootstraps.sh
+            grep -Fq 'PACKAGES+=("bzip2")' scripts/build-bootstraps.sh
+            sed -i 's/PACKAGES+=("bzip2")/PACKAGES+=("libbz2")/' scripts/build-bootstraps.sh
+            grep -Fq 'PACKAGES+=("libbz2")' scripts/build-bootstraps.sh
             # Do not pass -f: upstream build-bootstraps.sh expands an unset *_FOR_ARCH variable to /*.
             # A fresh builder container has no package markers, so normal mode builds missing packages safely.
             ./scripts/build-bootstraps.sh --architectures aarch64
