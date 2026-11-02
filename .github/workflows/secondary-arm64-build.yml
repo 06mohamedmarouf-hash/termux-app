@@ -56,29 +56,6 @@ jobs:
           grep -Fq bzip2 scripts/build-bootstraps.sh
           sed -i '/PACKAGES+=(.*bzip2.*/s/bzip2/libbz2/' scripts/build-bootstraps.sh
           grep -Fq libbz2 scripts/build-bootstraps.sh
-          # termux-tools generates bin/chsh from scripts/chsh.in during package installation.
-          # Normalize that generated script to the active secondary prefix before packaging.
-          python3 - <<'PY'
-          from pathlib import Path
-
-          recipe = Path("packages/termux-tools/build.sh")
-          source = recipe.read_text()
-          needle = '\tTERMUX_PKG_CONFFILES="$(cat "$TERMUX_PKG_BUILDDIR/conffiles")"'
-          if source.count(needle) != 1:
-              raise SystemExit("Unexpected termux-tools build recipe; refusing an unsafe patch")
-          replacement = needle + '''
-          \tlocal chsh_path="$TERMUX_PREFIX/bin/chsh"
-          \tlocal legacy_prefix="/data/data/com.termux/files/usr"
-          \ttest -f "$chsh_path"
-          \tsed -i "s|$legacy_prefix|$TERMUX_PREFIX|g" "$chsh_path"
-          \tif grep -Fq "$legacy_prefix" "$chsh_path"; then
-          \t\techo "Legacy prefix remains in generated chsh" >&2
-          \t\texit 1
-          \tfi
-          \tgrep -Fq "$TERMUX_PREFIX" "$chsh_path"'''
-          recipe.write_text(source.replace(needle, replacement))
-          PY
-          grep -Fq 'local chsh_path="$TERMUX_PREFIX/bin/chsh"' packages/termux-tools/build.sh
 
           # termux-tools generates bin/chsh from chsh.in. Normalize the installed
           # script at package-build time so stale configure output cannot leak
