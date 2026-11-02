@@ -3,7 +3,7 @@ name: Build secondary Termux with matching Bootstrap
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [secondary-arm64-bootstrap-fix]
     paths:
       - 'app/**'
       - 'termux-shared/**'
@@ -33,51 +33,59 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Build Bootstrap for com.termux.secondary
+      - name: Build fresh ARM64 Bootstrap for the secondary package
         shell: bash
         run: |
           set -euo pipefail
           cd termux-packages
           ./scripts/run-docker.sh bash -lc '
+            set -euo pipefail
             cd /home/builder/termux-packages
             export TERMUX_APP__PACKAGE_NAME=com.termux.secondary
-            ./scripts/build-bootstraps.sh --architectures aarch64,arm,i686,x86_64
+            ./scripts/build-bootstraps.sh --architectures aarch64 -f
           '
 
-      - name: Verify custom Bootstrap archives
+      - name: Verify every file in the ARM64 Bootstrap
         shell: bash
         run: |
           set -euo pipefail
+          archive="termux-packages/bootstrap-aarch64.zip"
+          test -s "$archive"
+          unzip -t "$archive"
+          verify_dir="$(mktemp -d)"
+          trap 'rm -rf "$verify_dir"' EXIT
+          unzip -q "$archive" -d "$verify_dir"
+          legacy_prefix='/data/data/com.termux/files/usr'
+          secondary_prefix='/data/data/com.termux.secondary/files/usr'
+          if grep -R -a -F -l -- "$legacy_prefix" "$verify_dir"; then
+            echo "Legacy Termux prefix found in ARM64 Bootstrap contents" >&2
+            exit 1
+          fi
+          if ! grep -R -a -F -q -- "$secondary_prefix" "$verify_dir"; then
+            echo "Expected secondary Termux prefix was not found in ARM64 Bootstrap" >&2
+            exit 1
+          fi
           mkdir -p app/src/main/cpp
-          for arch in aarch64 arm i686 x86_64; do
-            archive="termux-packages/bootstrap-${arch}.zip"
-            test -s "$archive"
-            unzip -t "$archive" >/dev/null
-            unzip -p "$archive" SYMLINKS.txt > "/tmp/SYMLINKS-${arch}.txt"
-            if grep -Fq '/data/data/com.termux/files/usr' "/tmp/SYMLINKS-${arch}.txt"; then
-              echo "Default Termux prefix found in ${archive}" >&2
-              exit 1
-            fi
-            cp "$archive" "app/src/main/cpp/bootstrap-${arch}.zip"
-            sha256sum "app/src/main/cpp/bootstrap-${arch}.zip"
-          done
+          cp "$archive" app/src/main/cpp/bootstrap-aarch64.zip
+          sha256sum app/src/main/cpp/bootstrap-aarch64.zip
 
-      - name: Build secondary Termux APKs
+      - name: Build secondary Termux ARM64 APK
         env:
           TERMUX_CUSTOM_BOOTSTRAP: '1'
           TERMUX_PACKAGE_VARIANT: apt-android-7
         run: ./gradlew --no-daemon assembleDebug
 
-      - name: Verify APK outputs
+      - name: Verify ARM64 APK output
         run: |
           set -euo pipefail
-          test -s app/build/outputs/apk/debug/termux-app_apt-android-7-debug_arm64-v8a.apk
-          sha256sum app/build/outputs/apk/debug/*.apk
+          apk="app/build/outputs/apk/debug/termux-app_apt-android-7-debug_arm64-v8a.apk"
+          test -s "$apk"
+          sha256sum "$apk"
 
-      - name: Upload secondary Termux APKs
+      - name: Upload secondary Termux ARM64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: termux-secondary-custom-bootstrap-apks
-          path: app/build/outputs/apk/debug/*.apk
+          name: termux-secondary-arm64-custom-bootstrap-apk
+          path: app/build/outputs/apk/debug/termux-app_apt-android-7-debug_arm64-v8a.apk
           if-no-files-found: error
           retention-days: 14
