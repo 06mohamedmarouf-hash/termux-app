@@ -72,7 +72,7 @@ android {
                 enable ((gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
                     (gradle.startParameter.taskNames.any { it.contains("Release") } && splitAPKsForReleaseBuilds == "1"))
                 reset ()
-                include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
+                include 'arm64-v8a'
                 universalApk true
             }
         }
@@ -221,7 +221,7 @@ task downloadBootstraps() {
         // Custom Termux forks must embed bootstrap archives built for their own app data path.
         // When enabled, the CI workflow supplies all four verified custom archives.
         if (System.getenv("TERMUX_CUSTOM_BOOTSTRAP") == "1") {
-            ["aarch64", "arm", "i686", "x86_64"].each { arch ->
+            ["aarch64"].each { arch ->
                 def customBootstrap = file("src/main/cpp/bootstrap-" + arch + ".zip")
                 if (!customBootstrap.isFile() || customBootstrap.length() == 0) {
                     throw new GradleException("Missing custom bootstrap archive: " + customBootstrap)
