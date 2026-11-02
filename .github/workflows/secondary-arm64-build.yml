@@ -67,7 +67,7 @@ jobs:
           grep -Fq 'mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/"' scripts/build-bootstraps.sh
           sed -i 's@mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/"@cp -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "/tmp/bootstrap-${1}.zip"@' scripts/build-bootstraps.sh
           grep -Fq '"/tmp/bootstrap-${1}.zip"' scripts/build-bootstraps.sh
-          ./scripts/run-docker.sh bash -lc '
+          ./scripts/run-docker.sh bash -lc "$(cat <<'CONTAINER_SCRIPT'
             set -euo pipefail
             cd /home/builder/termux-packages
             source scripts/properties.sh
@@ -77,15 +77,15 @@ jobs:
             # Do not pass -f: upstream build-bootstraps.sh expands an unset *_FOR_ARCH variable to /*.
             # The pinned Termux packages revision moved bzip2 tools into libbz2 as a subpackage.
             grep -Fq libbz2 scripts/build-bootstraps.sh
-            # Do not pass -f: upstream build-bootstraps.sh expands an unset *_FOR_ARCH variable to /*.
-            # Invalidate only per-package build markers: cached .debs may contain the primary Termux prefix.
+            # Invalidate only per-package build markers; cached .debs may contain the primary Termux prefix.
             # Keep the cache directory and package outputs; rebuild packages normally for the secondary prefix.
             if [ -d /data/data/.built-packages ]; then
               find /data/data/.built-packages -mindepth 1 -maxdepth 1 -type f -delete
             fi
             test -z "$(find /data/data/.built-packages -mindepth 1 -maxdepth 1 -type f -print -quit 2>/dev/null || true)"
             ./scripts/build-bootstraps.sh --architectures aarch64
-          '
+          CONTAINER_SCRIPT
+          )"
           # This step is still inside termux-packages; docker cp writes the archive here.
           docker cp termux-package-builder:/tmp/bootstrap-aarch64.zip bootstrap-aarch64.zip
           test -s bootstrap-aarch64.zip
