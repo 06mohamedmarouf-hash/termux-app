@@ -57,6 +57,29 @@ jobs:
           sed -i '/PACKAGES+=(.*bzip2.*/s/bzip2/libbz2/' scripts/build-bootstraps.sh
           grep -Fq libbz2 scripts/build-bootstraps.sh
 
+          # termux-tools generates bin/chsh from chsh.in. Normalize the installed
+          # script at package-build time so stale configure output cannot leak
+          # the primary app prefix into the secondary Bootstrap.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("packages/termux-tools/build.sh")
+          s = p.read_text()
+          needle = '\tTERMUX_PKG_CONFFILES="$(cat "$TERMUX_PKG_BUILDDIR/conffiles")"'
+          replacement = needle + '''
+          \tlocal chsh="$TERMUX_PREFIX/bin/chsh"
+          \ttest -f "$chsh"
+          \tsed -i "s|/data/data/com.termux/files/usr|${TERMUX_PREFIX}|g" "$chsh"
+          \tif grep -Fq "/data/data/com.termux/files/usr" "$chsh"; then
+          \t\techo "Legacy Termux prefix remains in $chsh" >&2
+          \t\texit 1
+          \tfi
+          \tgrep -Fq "$TERMUX_PREFIX" "$chsh"'''
+          if s.count(needle) != 1:
+              raise SystemExit("Expected unique termux-tools post-install hook was not found")
+          p.write_text(s.replace(needle, replacement, 1))
+          PY
+          grep -A10 'termux_step_post_make_install' packages/termux-tools/build.sh
+
       - name: Build only the phone's AArch64 Bootstrap
         shell: bash
         run: |
