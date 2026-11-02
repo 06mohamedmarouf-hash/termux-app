@@ -1,0 +1,83 @@
+name: Build secondary Termux with matching Bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'app/**'
+      - 'termux-shared/**'
+      - '.github/workflows/secondary-bootstrap-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out secondary Termux app
+        uses: actions/checkout@v4
+
+      - name: Check out Termux packages
+        uses: actions/checkout@v4
+        with:
+          repository: termux/termux-packages
+          ref: master
+          path: termux-packages
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build Bootstrap for com.termux.secondary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd termux-packages
+          ./scripts/run-docker.sh bash -lc '
+            cd /home/builder/termux-packages
+            export TERMUX_APP__PACKAGE_NAME=com.termux.secondary
+            ./scripts/build-bootstraps.sh --architectures aarch64,arm,i686,x86_64
+          '
+
+      - name: Verify custom Bootstrap archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/cpp
+          for arch in aarch64 arm i686 x86_64; do
+            archive="termux-packages/bootstrap-${arch}.zip"
+            test -s "$archive"
+            unzip -t "$archive" >/dev/null
+            unzip -p "$archive" SYMLINKS.txt > "/tmp/SYMLINKS-${arch}.txt"
+            if grep -Fq '/data/data/com.termux/files/usr' "/tmp/SYMLINKS-${arch}.txt"; then
+              echo "Default Termux prefix found in ${archive}" >&2
+              exit 1
+            fi
+            cp "$archive" "app/src/main/cpp/bootstrap-${arch}.zip"
+            sha256sum "app/src/main/cpp/bootstrap-${arch}.zip"
+          done
+
+      - name: Build secondary Termux APKs
+        env:
+          TERMUX_CUSTOM_BOOTSTRAP: '1'
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Verify APK outputs
+        run: |
+          set -euo pipefail
+          test -s app/build/outputs/apk/debug/termux-app_apt-android-7-debug_arm64-v8a.apk
+          sha256sum app/build/outputs/apk/debug/*.apk
+
+      - name: Upload secondary Termux APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-secondary-custom-bootstrap-apks
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
